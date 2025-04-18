@@ -1,77 +1,88 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { FaPaperPlane, FaSpinner } from 'react-icons/fa';
 
-const apiKey = import.meta.env.VITE_API_KEY;
-const externalUserId = import.meta.env.VITE_EXTERNAL_USER_ID;
-
 const Chatbot = () => {
-  const [sessionId, setSessionId] = useState(null);
   const [query, setQuery] = useState('');
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [botTyping, setBotTyping] = useState(false);
+  const [error, setError] = useState('');
 
-  // Function to create a chat session
-  const createChatSession = async () => {
-    try {
-      const response = await axios.post(
-        'https://api.on-demand.io/chat/v1/sessions',
-        { pluginIds: [], externalUserId },
-        { headers: { apikey: apiKey } }
-      );
-      const id = response.data.data.id;
-      setSessionId(id);
-    } catch (error) {
-      console.error('Error creating chat session:', error);
-      alert("Failed to create chat session. Please try again."); // User feedback
-    }
-  };
-
-  // Function to submit a query
+  // Function to submit a query to Groq
   const submitQuery = async () => {
-    if (!sessionId || !query.trim()) {
-      alert("Please enter a question."); // Feedback for empty input
+    if (!query.trim()) {
+      alert('Please enter a question.');
       return;
     }
+
     setLoading(true);
     setBotTyping(true);
+    setError('');
+
     try {
+      const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+
+      if (!apiKey) {
+        throw new Error('API key not found');
+      }
+
+      const payload = {
+        model: 'llama3-8b-8192',
+        messages: [
+          {
+            role: 'system',
+            content: `You are FinTrack, an expert financial assistant. You ONLY answer questions related to finance, investing, personal budgeting, financial planning, stock markets, mutual funds, banking, insurance, or economics. If the user asks anything outside these topics, politely respond with: "I'm here to help only with finance-related topics. Please ask me something in that domain."`
+          },
+          { role: 'user', content: query }
+        ],
+        temperature: 0.2
+      };
+
       const response = await axios.post(
-        `https://api.on-demand.io/chat/v1/sessions/${sessionId}/query`,
+        'https://api.groq.com/openai/v1/chat/completions',
+        payload,
         {
-          endpointId: 'predefined-openai-gpt4o',
-          query,
-          pluginIds: ['plugin-1712327325', 'plugin-1713962163', 'plugin-1729881043'],
-          responseMode: 'sync',
-        },
-        { headers: { apikey: apiKey } }
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
       );
 
-      // Ensure that the response contains the expected data
-      if (response.data && response.data.data) {
-        const answer = response.data.data.answer;
-        setResponses((prevResponses) => [
-          ...prevResponses,
-          { query, response: answer },
-        ]);
+      const answer = response.data.choices?.[0]?.message?.content;
+      if (answer) {
+        setResponses(prev => [...prev, { query, response: answer.trim() }]);
         setQuery('');
       } else {
-        throw new Error("Unexpected response format");
+        throw new Error('No response from model');
       }
     } catch (error) {
       console.error('Error submitting query:', error);
-      alert("There was an error. Please try again."); // Error feedback
+      
+      if (error.message === 'API key not found') {
+        setError('API key not found. Please check your .env file.');
+      } else if (error.response?.status === 401) {
+        setError('Authentication failed. Please check your API key.');
+      } else if (error.response?.status === 403) {
+        setError('API access forbidden. Check your account permissions.');
+      } else {
+        setError('Error connecting to the API. Please try again later.');
+      }
     } finally {
       setLoading(false);
       setBotTyping(false);
     }
   };
 
-  // Effect to create a session when the component mounts
-  useEffect(() => {
-    createChatSession();
-  }, []);
+  // Handle Enter key press
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !loading) {
+      submitQuery();
+    }
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white px-6 py-8">
@@ -80,24 +91,41 @@ const Chatbot = () => {
         <h2 className="text-4xl font-bold text-orange-500 animate-fadeIn">Chat with FinTrack Bot</h2>
         <p className="text-lg text-gray-300">Get real-time insights and guidance on financial topics.</p>
 
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-500 text-white p-3 rounded-lg text-center">
+            {error}
+          </div>
+        )}
+
         {/* Chat Window */}
         <div className="bg-gray-900 p-6 rounded-lg shadow-lg w-full max-w-lg mx-auto space-y-4 animate-fadeIn delay-200">
-          <div className="chat-window h-60 overflow-y-auto border border-gray-700 rounded-lg p-4 bg-gray-800 space-y-3">
-            {responses.map((item, index) => (
-              <div key={index} className="fade-in">
-                <div className="text-left">
-                  <strong className="text-orange-400">You:</strong>{' '}
-                  <span className="text-gray-300 bg-gray-700 px-2 py-1 rounded-lg inline-block">{item.query}</span>
-                </div>
-                <div className="text-left mt-1">
-                  <strong className="text-green-400">Bot:</strong>{' '}
-                  <span className="text-gray-300 bg-gray-700 px-2 py-1 rounded-lg inline-block">{item.response}</span>
-                </div>
+          <div className="chat-window h-80 overflow-y-auto border border-gray-700 rounded-lg p-4 bg-gray-800 space-y-4">
+            {responses.length === 0 ? (
+              <div className="text-center text-gray-500 py-10">
+                Ask FinTrack a finance-related question to get started.
               </div>
-            ))}
-            {botTyping && (
-              <div className="text-left text-gray-400">Bot is typing...</div>
+            ) : (
+              responses.map((item, index) => (
+                <div key={index} className="fade-in space-y-2">
+                  <div className="text-left">
+                    <strong className="text-orange-400">You:</strong>{' '}
+                    <span className="text-gray-300 bg-gray-700 px-2 py-1 rounded-lg inline-block">
+                      {item.query}
+                    </span>
+                  </div>
+                  <div className="text-left">
+                    <strong className="text-green-400">Bot:</strong>
+                    <div className="mt-2 prose prose-invert text-gray-200">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {item.response}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
+            {botTyping && <div className="text-left text-gray-400">Bot is typing...</div>}
           </div>
 
           {/* Input Section */}
@@ -106,7 +134,8 @@ const Chatbot = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ask me something..."
+              onKeyPress={handleKeyPress}
+              placeholder="Ask me about finance..."
               className="flex-grow p-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500"
             />
             <button
@@ -114,11 +143,7 @@ const Chatbot = () => {
               className="px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-transform transform hover:scale-105"
               disabled={loading}
             >
-              {loading ? (
-                <FaSpinner className="animate-spin" />
-              ) : (
-                <FaPaperPlane />
-              )}
+              {loading ? <FaSpinner className="animate-spin" /> : <FaPaperPlane />}
             </button>
           </div>
         </div>

@@ -26,6 +26,7 @@ function Calculator() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // Allow only numeric input
     if (!isNaN(value)) {
       setInput({ ...input, [name]: value });
     }
@@ -44,7 +45,6 @@ function Calculator() {
       return;
     }
 
-    // Prepare data for API call using parseFloat
     const parsedInput = Object.keys(input).reduce((acc, key) => {
       acc[key] = parseFloat(input[key]);
       return acc;
@@ -52,17 +52,19 @@ function Calculator() {
 
     try {
       const response = await axios.post(
-        'https://f1e0-106-194-118-25.ngrok-free.app/predict',
+        'https://f0d6-106-219-232-170.ngrok-free.app/predict',
         parsedInput,
-        { headers: { 'Content-Type': 'application/json' } }
+        {
+          headers: { 'Content-Type': 'application/json' }
+        }
       );
 
       setResult(response.data);
-      console.log(response.data); // Log the response data
-      setLoading(false);
+      console.log(response.data);
     } catch (error) {
-      console.error('Error submitting data:', error);
+      console.error('Error submitting data:', error.response?.data || error.message);
       setError('Submission error. Please check your inputs or try again later.');
+    } finally {
       setLoading(false);
     }
   };
@@ -76,7 +78,10 @@ function Calculator() {
         Enter your financial details to calculate loan predictions and assess the risk of loan default.
       </p>
 
-      <form onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6"
+      >
         {initialFields.map((field) => (
           <div key={field.name} className="flex flex-col">
             <label htmlFor={field.name} className="text-gray-300 mb-2 font-medium text-lg">
@@ -96,8 +101,8 @@ function Calculator() {
         ))}
 
         <div className="md:col-span-2 flex justify-center">
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="w-1/2 py-3 mt-6 bg-orange-500 text-white font-semibold rounded-lg shadow-lg hover:bg-orange-600 transition-transform transform hover:scale-105"
           >
             {loading ? 'Loading...' : 'Predict'}
