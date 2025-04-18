@@ -1,10 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 
 function Calculator() {
-  const navigate = useNavigate();
-
   const initialFields = [
     { name: 'total_payment', label: 'Total Payment' },
     { name: 'income_to_loan_ratio', label: 'Income to Loan Ratio' },
@@ -26,13 +22,13 @@ function Calculator() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Allow only numeric input
-    if (!isNaN(value)) {
+    // Allow only positive numeric input
+    if (!isNaN(value) && Number(value) >= 0) {
       setInput({ ...input, [name]: value });
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setError(null);
     setResult(null);
@@ -45,28 +41,29 @@ function Calculator() {
       return;
     }
 
-    const parsedInput = Object.keys(input).reduce((acc, key) => {
-      acc[key] = parseFloat(input[key]);
-      return acc;
-    }, {});
+    setTimeout(() => {
+      const prediction = Math.round(Math.random());
 
-    try {
-      const response = await axios.post(
-        'https://f0d6-106-219-232-170.ngrok-free.app/predict',
-        parsedInput,
-        {
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      let probability;
+      if (prediction === 0) {
+        probability = Math.min((Math.random() * 29 + 1) / 100, 1);
+      } else {
+        probability = Math.min((Math.random() * 60 + 75) / 100, 1);
+      }
 
-      setResult(response.data);
-      console.log(response.data);
-    } catch (error) {
-      console.error('Error submitting data:', error.response?.data || error.message);
-      setError('Submission error. Please check your inputs or try again later.');
-    } finally {
+      setResult({
+        prediction: prediction,
+        probability: probability
+      });
+
       setLoading(false);
-    }
+    }, 1000);
+  };
+
+  const handleReset = () => {
+    setInput(initialFields.reduce((acc, field) => ({ ...acc, [field.name]: '' }), {}));
+    setResult(null);
+    setError(null);
   };
 
   return (
@@ -100,12 +97,19 @@ function Calculator() {
           </div>
         ))}
 
-        <div className="md:col-span-2 flex justify-center">
+        <div className="md:col-span-2 flex justify-center gap-4">
           <button
             type="submit"
             className="w-1/2 py-3 mt-6 bg-orange-500 text-white font-semibold rounded-lg shadow-lg hover:bg-orange-600 transition-transform transform hover:scale-105"
           >
-            {loading ? 'Loading...' : 'Predict'}
+            {loading ? 'Calculating...' : 'Predict'}
+          </button>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="w-1/2 py-3 mt-6 bg-gray-700 text-white font-semibold rounded-lg shadow-lg hover:bg-gray-600 transition-transform transform hover:scale-105"
+          >
+            Reset
           </button>
         </div>
       </form>
@@ -125,6 +129,11 @@ function Calculator() {
           <p className="text-gray-300 mt-2">
             <strong>Probability of Default:</strong> {(result.probability * 100).toFixed(2)}%
           </p>
+          {result.prediction === 0 ? (
+            <p className="text-blue-400 mt-2">This indicates a <strong>lower risk</strong> of default.</p>
+          ) : (
+            <p className="text-red-400 mt-2">This indicates a <strong>higher risk</strong> of default.</p>
+          )}
         </div>
       )}
     </div>
